@@ -17,17 +17,11 @@
 #define CONFIG_FILE_ALT "SD2.CFG"
 #define CONFIG_BACKUP_FILE  "SD.OLD"
 
+extern bool debounceInputPin(int pin);
 
 // Pin with the presence sensor
 
 #define PRESENCE_PIN 19
-
-
-// Number of consecutive readings that the present pin must be in
-// the same state before acting on it.
-
-#define DEBOUNCE_THRESHOLD 5
-
 
 
 //=============================================================================
@@ -72,63 +66,35 @@ Disks::~Disks(void)
 void Disks::poll(void)
 {
         static bool last = false;
-        static int debounceCounter = 0;
 
         // Get current state of the present bit
-        
-        bool state = digitalRead(PRESENCE_PIN);
 
-        // I don't know if debouncing is really necessary or not, but do it
-        // just in case.  If this state is the same as the last reading, then
-        // see if it's debounced enough.
-        
-        if (state == last)
+        bool state = debounceInputPin(PRESENCE_PIN);
+
+        if (state != presentState)
         {
-                // Only increase the counter if we're below the threshold
-                
-                if (debounceCounter < DEBOUNCE_THRESHOLD)
+                // Finally, we can do the appropriate
+                // action based on whether the card is
+                // now present or not.
+
+                if (state == true)
                 {
-                        if (++debounceCounter == DEBOUNCE_THRESHOLD)
-                        {
-                                // Threshold is reached, so now see if the
-                                // current state is different than the
-                                // last known state.  No sense doing anything
-                                // unless there is a change..
-                                
-                                if (state != presentState)
-                                {
-                                        // Finally, we can do the appropriate
-                                        // action based on whether the card is
-                                        // now present or not.
-                                        
-                                        if (state == true)
-                                        {
-                                                Serial.println("Disks::poll detected card removal");
-                                                userInt->sendEvent(UI_SD_REMOVED);
-                                                
-                                                //tell all disks to close/unmount
-                                                closeAll();
-                                        }
-                                        else
-                                        {
-                                                Serial.println("Disks::poll detected card insertion");
-                                                userInt->sendEvent(UI_SD_INSERTED);
-                                                SD.begin(SD_PIN);
-                                                
-                                                //Mount all default drives
-                                                mountDefaults(whichConfigFile);
-                                        }
-                                        presentState = state;
-                                }
-                        }
+                        Serial.println("Disks::poll detected card removal");
+                        userInt->sendEvent(UI_SD_REMOVED);
+
+                        //tell all disks to close/unmount
+                        closeAll();
                 }
-        }
-        else
-        {
-                // state is different than last time, reset counter.
-                
-                debounceCounter = 0;
-                last = state;
+                else
+                {
+                        Serial.println("Disks::poll detected card insertion");
+                        userInt->sendEvent(UI_SD_INSERTED);
+                        SD.begin(SD_PIN);
+
+                        //Mount all default drives
+                        mountDefaults(whichConfigFile);
+                }
+                presentState = state;
         }
 }
 
@@ -164,7 +130,7 @@ void Disks::mountDefaults(int which)
                 configFileName = CONFIG_FILE_ALT;
         }
 
-        if (digitalRead(PRESENCE_PIN))
+        if (debounceInputPin(PRESENCE_PIN))
         {
                 Serial.println("No card inserted");
                 return;

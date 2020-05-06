@@ -51,14 +51,26 @@
 //
 // Revision 1.1 enhancements:
 //    * Supports new SD Shield from Corsham Technologies, which has more
-//      pins brought to the parallel port, interrupt capabilities, etc.
+//      pins brought to the parallel port, interrupt capabilities, option
+//      switches, etc.
 //
 // Revision 1.2:
 //    * Now supports the new sector read/write LONG commands in the
 //      protocol guide rev 1.1.  Also added the ability to boot from an
 //      alternate config file.
+//
+// Revision 1.3:
+//    * General code clean-up.  Added debounce code for all digital inputs.
+
 
 #include <Arduino.h>
+
+#ifdef USE_SDFAT
+#include <SdFat.h>
+#include <SdFatConfig.h>
+#include <SysCall.h>
+#endif
+
 #include <SPI.h>
 #include <SD.h>
 #include "Link.h"
@@ -67,6 +79,7 @@
 #include <Wire.h>
 #include "RTC.h"
 #include "Errors.h"
+#include "SdFuncs.h"
 
 
 // Debugging options.  They usually produce lots of serial output so be careful what you turn on.
@@ -89,15 +102,13 @@
 
 #define POLL_DELAY  100      // 1/10th of a second
 
+// Number of times an input pin must be the same before it is counted.
+
+#define DEBOUNCE_COUNT      5
 
 // The link to the remote system.
 
-static Link *link;
-
-// For file operations, have a file handy.  Anyone using the file should be
-// darned sure it gets closed when done!
-
-static File myFile;
+Link *link;
 
 // This is the collection of disks
 
@@ -138,7 +149,7 @@ void setup()
         Serial.begin(9600);
 
         Serial.println("");
-        Serial.println("SD Drive version 1.2");
+        Serial.println("SD Drive version 1.3");
         Serial.println("Brought to you by Bob Applegate and Corsham Technologies");
         Serial.println("bob@corshamtech.com, www.corshamtech.com");
         
@@ -171,20 +182,20 @@ void setup()
                 Serial.println("Configuration switch settings:");
                 
                 Serial.print("Config file: ");
-                Serial.println(digitalRead(OPTION_1_PIN) ? "Default" : "Alternate");
-                if (!digitalRead(OPTION_1_PIN))
+                Serial.println(debounceInputPin(OPTION_1_PIN) ? "Default" : "Alternate");
+                if (!debounceInputPin(OPTION_1_PIN))
                 {
                         WhichConfigFile = CONFIG_FILE_ALTERNATE;
                 }
 
                 Serial.print("Option 2: ");
-                Serial.println(digitalRead(OPTION_2_PIN) ? "Off" : "On");
+                Serial.println(debounceInputPin(OPTION_2_PIN) ? "Off" : "On");
 
                 Serial.print("Option 3: ");
-                Serial.println(digitalRead(OPTION_3_PIN) ? "Off" : "On");
+                Serial.println(debounceInputPin(OPTION_3_PIN) ? "Off" : "On");
 
                 Serial.print("Option 4: ");
-                Serial.println(digitalRead(OPTION_4_PIN) ? "Off" : "On");
+                Serial.println(debounceInputPin(OPTION_4_PIN) ? "Off" : "On");
         }
         
         link = new Link();
@@ -264,7 +275,7 @@ void loop()
                         if (++timerCount >= timerValue)
                         {
                                 timerCount = 0;   // reset counter
-                                //digitalWrite(TIMER_OUT_PIN, !digitalRead(TIMER_OUT_PIN));
+                                //digitalWrite(TIMER_OUT_PIN, !debounceInputPin(TIMER_OUT_PIN));
                                 digitalWrite(TIMER_OUT_PIN, LOW);
                                 digitalWrite(TIMER_OUT_PIN, HIGH);
                         }
@@ -315,7 +326,7 @@ static bool processEvent(Event *ep)
                         Serial.print("Got TYPE FILE: ");
 #endif
                         Serial.println((char *)(ep->getData()));
-                        typeFile(ep);
+                        openFileForRead(ep);
                         break;
                                 
                 case EVT_SEND_DATA:
@@ -417,73 +428,17 @@ static bool processEvent(Event *ep)
                 case EVT_DONE:
                         // Close any open file.
 
-                        myFile.close();   // be sure it's closed
+                        closeFiles();
                         deleteEvent = true;
                         break;
 
                 case EVT_WRITE_FILE:
-                {
-                        if (myFile)
-                                myFile.close();
-                                
-                        byte *ptr = ep->getData();
-#ifdef DEBUG_FILE_WRITE
-                        Serial.print("Got request to open a file for writing: \"");
-                        Serial.print((char *)ptr);
-                        Serial.print("\"");
-#endif
-                        SD.remove((char *)(ep->getData()));   // remove existing file
-                        myFile = SD.open((char *)(ep->getData()), FILE_WRITE);
-                        if (myFile)
-                        {
-#ifdef DEBUG_FILE_WRITE
-                                Serial.println(" - success");
-#endif
-                                ep->clean(EVT_ACK);
-                        }
-                        else
-                        {
-#ifdef DEBUG_FILE_WRITE
-                                Serial.println(" - FAILURE");
-#endif
-                                ep->clean(EVT_NAK);
-                                ep->addByte(ERR_WRITE_ERROR);
-                        }
-                        link->sendEvent(ep);
+                        openFileForWrite(ep);
                         break;
-                }
 
                 case EVT_WRITE_BYTES:
-                {
-                        // The first byte is the length.  If zero then the length is actually 256,
-                        // else the length is the actual length.
-                        
-                        byte *ptr = ep->getData();
-                        unsigned length = *ptr++;
-                        if (length == 0)
-                                length = 256;
-
-#ifdef DEBUG_FILE_WRITE
-                        Serial.print("Writing ");
-                        Serial.print(length);
-                        Serial.println(" bytes to the raw file");
-#endif
-
-                        // Now write the block of data
-                        if (myFile.write(ptr, length) == length)
-                        {
-                                ep->clean(EVT_ACK);     // send back an ACK.
-                        }
-                        else
-                        {
-                                Serial.println("Got a NAK!");
-                                ep->clean(EVT_NAK);
-                                ep->addByte(ERR_WRITE_ERROR);
-                        }
-                        myFile.flush();
-                        link->sendEvent(ep);
+                        writeBytes(ep);
                         break;
-                }
 
                 case EVT_SAVE_CONFIG:
 #ifdef DEBUG_SAVE_CONFIG
@@ -534,171 +489,6 @@ static bool processEvent(Event *ep)
                         break;
         }
         return deleteEvent;
-}
-
-
-
-
-//=============================================================================
-// This sends a directory to the host.  On entry, it is assumed there is at
-// least one Event available.  Ie, free it before calling this.  This sends
-// only file names at the top level, not directories, and it does not
-// recurse.
-
-static void sendDirectory()
-{
-        Event *eptr;
-        File dir;
-        
-        bool go_on = true;
-
-#ifdef DEBUG_DIR
-        Serial.println("Sending disk directory...");
-#endif
- 
-        // Open the root directory
-
-        dir.close();
-        dir = SD.open("/");
-        dir.rewindDirectory();
-        if (!dir.available())
-        {
-                Serial.println("DIR not available");
-        }
-                
-        File entry;
-                                
-        while (go_on)
-        {
-                entry =  dir.openNextFile();
-                if (entry == NULL)
-                {
-                        // no more files
-                        go_on = false;
-                }
-
-                // Only process file names, not directories.
-
-                if (entry && !entry.isDirectory())
-                {                        
-                        // Now copy the filename into the event and send it.
-                        
-                        byte *bptr = (byte *)(entry.name());
-                        if (*bptr != '_') // filenames starting with underscore are deleted
-                        {
-                                eptr = link->getAnEvent();
-                                eptr->clean(EVT_DIR_INFO);    // this is a directory entry
-#ifdef DEBUG_DIR
-                                Serial.print("   ");
-                                Serial.println(entry.name());
-#endif
-                                while (*bptr)
-                                {
-                                        eptr->addByte(*bptr++);
-                                }
-                                eptr->addByte(0);    // terminate the name
-                                link->sendEvent(eptr);
-                        }
-                }
-                entry.close();
-        }
-        
-        dir.close();
-        
-        // Send an event letting the host know the directory is done
-        
-        eptr->clean(EVT_DIR_END);
-        link->sendEvent(eptr);
-}
-
-
-
-
-//=============================================================================
-// Given an event with a EVT_TYPE_FILE type, verify the file can be read and
-// send back either an ACK or NAK.
-
-static void typeFile(Event *ep)
-{
-        if (myFile)
-        {
-#ifdef DEBUG_FILE_READ
-                Serial.println("typeFile found open file... closing");
-#endif
-                myFile.close();    // make sure an existing file is closed
-        }
-
-        // Attempt to open the file
-                                
-        myFile = SD.open((char *)(ep->getData()));
-        if (myFile)
-        {
-                ep->clean(EVT_ACK);  // woohoo!
-                myFile.seek(0);
-        }
-        else
-        {
-                Serial.print("typeFile: error opening ");
-                Serial.println((char *)(ep->getData()));
-
-                 ep->clean(EVT_NAK);
-                 ep->addByte(ERR_FILE_NOT_FOUND);    // misc error
-         }
-
-         link->sendEvent(ep);
-}
-
-
-
-
-//=============================================================================
-// This sends the next block of the open file.
-
-static void nextDataBlock(Event *ep)
-{
-        // They sent the maximum length they can handle.
-        byte length = *(ep->getData());  // get maximum length
-
-#ifdef DEBUG_FILE_READ
-        Serial.print("Byte count: ");
-        Serial.println(length);
-#endif
-
-        ep->clean(EVT_FILE_DATA);
-                                
-        // We're going to cheat a bit here.  Add a length of 0.
-        // Once we have written the data and know the length,
-        // go back and put the actual length into the buffer.
-                           
-        ep->addByte(0);    // length is first
-                                
-        byte actualCount = 0;
-
-        while (myFile.available() && actualCount < length)
-        {
-                ep->addByte(myFile.read());
-                actualCount++;
-        }
-                                
-        // Now go back and put in the actual length
-                                
-        byte *bptr = ep->getData();  // get start of buffer
-        *bptr = actualCount;    // and drop in the actual length
-                                
-        // If end of file, close the file
-
-        if (actualCount == 0)
-        {
-#ifdef DEBUG_FILE_READ
-                Serial.println("Reached EOF, closing file");
-#endif
-                myFile.close();
-        }
-#ifdef DEBUG_FILE_READ
-                Serial.print("Actual bytes sent: ");
-                Serial.println(actualCount);
-#endif                      
-        link->sendEvent(ep);
 }
 
 
@@ -1083,7 +873,7 @@ bool isNewBoard(void)
         // This pin is pulled high for the older boards but is pulled low
         // for new boards.
         
-        return !digitalRead(NEW_SHIELD_PIN);
+        return !debounceInputPin(NEW_SHIELD_PIN);
 }
 
 
@@ -1132,5 +922,32 @@ void setTimerValue(unsigned char interval)
 }
 
 
+
+
+//=============================================================================
+// Given an input pin number, read and debounce it.  Returns the final
+// debounced value.  It must be the same value for DEBOUNCE_COUNT times.
+
+bool debounceInputPin(int pin)
+{
+        bool val, last;     // it's okay not to initialize them
+        int goodCount = 0;
+
+        do
+        {
+                if ((last = digitalRead(pin)) == val)
+                {
+                        goodCount++;
+                }
+                else
+                {
+                        val = last;     // new value
+                        goodCount = 0;  // start counting again
+                }
+        }
+        while (goodCount < DEBOUNCE_COUNT);
+
+        return val;
+}
 
 
