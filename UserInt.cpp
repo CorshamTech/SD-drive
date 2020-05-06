@@ -69,6 +69,8 @@ UserInt *UserInt::getInstance(void)
 
 UserInt::UserInt(void)
 {
+        // Turn everything off by default
+        
         pinMode(RED_LED_PIN, OUTPUT);
         digitalWrite(RED_LED_PIN, LED_OFF);
         
@@ -76,8 +78,26 @@ UserInt::UserInt(void)
         digitalWrite(YELLOW_LED_PIN, LED_OFF);
         
         pinMode(GREEN_LED_PIN, OUTPUT);
+        digitalWrite(GREEN_LED_PIN, LED_OFF);
+
+        // Now cycle through and turn on red then yellow for a short
+        // period, finally leaving green on.
+
+        digitalWrite(RED_LED_PIN, LED_ON);
+        delay(300);
+        digitalWrite(RED_LED_PIN, LED_OFF);
+
+        digitalWrite(YELLOW_LED_PIN, LED_ON);
+        delay(300);
+        digitalWrite(YELLOW_LED_PIN, LED_OFF);
+
         digitalWrite(GREEN_LED_PIN, LED_ON);
-        greenOn = true;
+        delay(300);
+        digitalWrite(GREEN_LED_PIN, LED_OFF);
+        
+        //digitalWrite(GREEN_LED_PIN, LED_ON);
+        
+        greenOn = false;
         pollCount = 0;
 }
 

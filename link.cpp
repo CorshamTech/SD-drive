@@ -62,6 +62,8 @@ extern unsigned getSectorSize(byte code);
 
 #define PROTOCOL_VERSION 1
 
+extern bool debounceInputPin(int pin);
+
 
 //=============================================================================
 // Define all the ports in symbolic terms so it'll be easy to move ports/pins
@@ -165,9 +167,12 @@ bool Link::poll(void)
 {
         word data;
   
-        // Strobe goes high if the host has put data on the data pins
+        // Strobe goes high if the host has put data on the data pins.  Something
+        // to consider for a future fix is a timeout here.  If the STROBE line is
+        // floating then the code might get stuck here forever waiting for a byte
+        // to arrive.
         
-        if (digitalRead(STROBE))
+        if (debounceInputPin(STROBE))
         {
                 // There is a strobe, so get the byte from the host and
                 // then send it to the state machine for processing.
@@ -211,7 +216,7 @@ void Link::prepareWrite(void)
         // side has indicating it's in read mode or else we might have
         // both drivers fighting each other.
         
-        while (digitalRead(DIRECTION))
+        while (debounceInputPin(DIRECTION))
                 ;
 
         LOWER_DDR = LOWER_MASK;
@@ -234,11 +239,11 @@ void Link::writeByte(byte data)
         // strobe to go high
                 
         digitalWrite(ACK, HIGH);
-        while (digitalRead(STROBE) == LOW)
+        while (debounceInputPin(STROBE) == LOW)
                 ;
                     
         digitalWrite(ACK, LOW);
-        while (digitalRead(STROBE) == HIGH);
+        while (debounceInputPin(STROBE) == HIGH);
                 ;
 }
 
@@ -254,7 +259,7 @@ byte Link::readByte(void)
         
         // Wait for STROBE to go high, indicating a byte is ready.
         
-        while (digitalRead(STROBE) == LOW)
+        while (debounceInputPin(STROBE) == LOW)
                 ;
                 
         // Data is available, so grab it right away, then ACK it.
@@ -264,7 +269,7 @@ byte Link::readByte(void)
                 
         // Wait for host to lower strobe
                 
-        while (digitalRead(STROBE))
+        while (debounceInputPin(STROBE))
                 ;
                         
         // Lower ACK and we're done.
@@ -760,6 +765,9 @@ void Link::freeAnEvent(Event *eptr)
 {
         freeEvent = eptr;
 }
+
+
+
 
 
 
