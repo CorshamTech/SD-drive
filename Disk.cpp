@@ -93,7 +93,7 @@ bool Disk::mount(char *afilename, bool readOnly)
                 }
                 else
                 {
-                        openFlag = FILE_WRITE;
+                        openFlag = O_RDWR;
                 }
 
                 // Open the file!
@@ -202,7 +202,11 @@ bool Disk::write(unsigned long offset, byte *buf)
         }
         else
         {
-                file.seek(offset);
+                if (file.seek(offset) == false)
+                {
+                        Serial.print("Failed seeing to offset ");
+                        Serial.println(offset);
+                }
                 if (file.available() < SECTOR_SIZE)
                 {
                         Serial.print("Not enough bytes: ");
@@ -226,9 +230,15 @@ bool Disk::write(unsigned long offset, byte *buf)
                         else
                         {
                                 ret = true;    // success!
-//                                Serial.print("Just wrote ");
-//                                Serial.print(wrote);
-//                                Serial.println(" bytes");
+#if 0
+                                Serial.print("Just wrote ");
+                                Serial.print(wrote);
+                                Serial.print(" bytes at offset ");
+                                Serial.println(offset);
+#endif
+#ifdef DUMP_SECTORS
+                                hexdump(buf, SECTOR_SIZE);
+#endif
                         }
                 }
         }
@@ -269,5 +279,3 @@ byte Disk::getStatus(void)
                 
         return ret;
 }
-
-

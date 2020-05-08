@@ -61,7 +61,10 @@
 //
 // Revision 1.3:
 //    * General code clean-up.  Added debounce code for all digital inputs.
-
+//
+// Revision 1.4:
+//    * Fixed bug that caused all DSK file updates to be appended rather than applied
+//      to the requested sector.  Removed a bit of excess debugging output.
 
 #include <Arduino.h>
 
@@ -149,7 +152,7 @@ void setup()
         Serial.begin(9600);
 
         Serial.println("");
-        Serial.println("SD Drive version 1.3");
+        Serial.println("SD Drive version 1.4");
         Serial.println("Brought to you by Bob Applegate and Corsham Technologies");
         Serial.println("bob@corshamtech.com, www.corshamtech.com");
         
@@ -394,7 +397,7 @@ static bool processEvent(Event *ep)
                 {
                         ep->clean(EVT_VERSION_INFO);  // same event type but clear all other data
                         byte *ptr = ep->getData();
-                        strcpy((char *)ptr, "Corsham Technology\r\nv0.1");
+                        strcpy((char *)ptr, "Corsham Technology\r\nv1.4");
                         link->sendEvent(ep);
                         break;
                 }
@@ -507,7 +510,7 @@ static void readSector(Event *ep)
         byte drive = *bptr++;
         byte sectorSize = *bptr++;    // note used for now
         unsigned long track = (unsigned long)(*bptr++);
-        Serial.println(*bptr);
+        //Serial.println(*bptr);
         unsigned long sector = (unsigned long)(*bptr++);
         unsigned long sectorsPerTrack = (unsigned long)(*bptr++);
         
@@ -949,5 +952,3 @@ bool debounceInputPin(int pin)
 
         return val;
 }
-
-
