@@ -226,7 +226,7 @@ void setup()
 // Displays the amount of free memory to the serial port.  Useful for debugging
 // but will be removed eventually.
 
-int freeRam(char *text)
+int freeRam(const char *text)
 {
         extern int __heap_start, *__brkval;
         int v;

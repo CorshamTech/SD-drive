@@ -199,7 +199,7 @@ bool Link::poll(void)
 
 void Link::prepareRead(void)
 {
-        LOWER_DDR = ~LOWER_MASK;
+        LOWER_DDR = (~LOWER_MASK) & 0xff;
 }
 
 
@@ -765,10 +765,3 @@ void Link::freeAnEvent(Event *eptr)
 {
         freeEvent = eptr;
 }
-
-
-
-
-
-
-
