@@ -76,7 +76,7 @@
 
 #include <SPI.h>
 #include <SD.h>
-#include "Link.h"
+#include "link.h"
 #include "Disks.h"
 #include "UserInt.h"
 #include <Wire.h>

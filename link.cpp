@@ -15,7 +15,6 @@
 // system.
 //
 // August 2014 - Bob Applegate, bob@corshamtech.com
-// March 2021 - Changed filename to Link.cpp
 //
 //=============================================================================
 // Ports and how they're used.  Note that we operate on whole ports for some
@@ -55,7 +54,7 @@
 //       A4     a4  pc4   DATA 4
 //       A5     a5  pc5   DATA 5
 
-#include "Link.h"
+#include "link.h"
 #include <Arduino.h>
 
 

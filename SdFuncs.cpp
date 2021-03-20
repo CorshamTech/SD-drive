@@ -93,7 +93,7 @@ void sendDirectory()
         
 #else
                 entry =  dir.openNextFile();
-                if (entry == NULL)
+                if (!entry)
                 {
                         // no more files
                         go_on = false;
@@ -311,6 +311,3 @@ void closeFiles(void)
 {
         myFile.close();   // be sure it's closed
 }
-
-
-
