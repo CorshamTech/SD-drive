@@ -7,6 +7,8 @@
 // The data in this file must comply with The Remote Disk Protocol Guide.
 //
 // August 2014 - Bob Applegate, bob@corshamtech.com
+//
+// March 2021 - Changed filename to Link.h
 
 #ifndef __LINK_H__
 #define __LINK_H__
@@ -85,4 +87,3 @@ class Link
 };
 
 #endif    // __LINK_H__
-
