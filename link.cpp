@@ -28,8 +28,7 @@
 //             is sending, or ACK if we're sending.
 // ACK       - To the master.  This is our ACK when the master is sending us
 //             data, or a strobe to the host when we're sending data.
-
-
+//
 // This is a very basic mapping of ports between the processors
 //
 // 653x  6821   Arduino   Use
@@ -57,6 +56,10 @@
 #include "link.h"
 #include <Arduino.h>
 
+// Various debug options.  These should all be left as undefined or
+// else performance will suffer.
+
+#undef DEBUG_LINK_RAW
 
 extern unsigned getSectorSize(byte code);
 
@@ -231,6 +234,11 @@ void Link::prepareWrite(void)
 
 void Link::writeByte(byte data)
 {
+#ifdef DEBUG_LINK_RAW
+        Serial.print("Link writeByte: ");
+        Serial.println(data, HEX);
+#endif  // DEBUG_LINK_RAW
+
         // Put the byte onto the data port
         
         LOWER_WRITE = data;
@@ -275,6 +283,12 @@ byte Link::readByte(void)
         // Lower ACK and we're done.
                 
         digitalWrite(ACK, LOW);
+
+#ifdef DEBUG_LINK_RAW
+        Serial.print("Link readByte: ");
+        Serial.println(data, HEX);
+#endif  // DEBUG_LINK_RAW
+
         return data;
 }
 

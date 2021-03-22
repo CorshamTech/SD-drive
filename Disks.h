@@ -77,11 +77,10 @@ class Disks
                 bool presentState;
                 UserInt *userInt;
                 int whichConfigFile;
-                char *configFileName;
+                const char *configFileName;
                 
                 void setError(byte code) { errorCode = code; }
 };
 
 
 #endif  // __DISKS_H__
-
